@@ -2156,12 +2156,16 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             _dynamicIslandWindow = new DynamicIslandWindow();
             _dynamicIslandWindow.IslandDoubleClicked += OnDynamicIslandDoubleClicked;
+            _dynamicIslandWindow.IslandHidden += OnDynamicIslandHidden;
         }
 
         // 同步灵动岛尺寸、时长等配置
         _dynamicIslandWindow.AutoHideDuration = TimeSpan.FromSeconds(Math.Max(1, Settings.DynamicIslandDurationSeconds));
         _dynamicIslandWindow.IslandMinWidth = Settings.DynamicIslandMinWidth;
         _dynamicIslandWindow.IslandMaxWidth = Settings.DynamicIslandMaxWidth;
+        // 高度低于下限会裁切左侧图标，统一写回下限值，保证设置界面与实际渲染一致
+        if (Settings.DynamicIslandHeight < DynamicIslandWindow.MinIslandHeight)
+            Settings.DynamicIslandHeight = DynamicIslandWindow.MinIslandHeight;
         _dynamicIslandWindow.IslandHeight = Settings.DynamicIslandHeight;
         _dynamicIslandWindow.IslandTopMargin = Settings.DynamicIslandTopMargin;
         _dynamicIslandWindow.IslandFontSize = Settings.DynamicIslandFontSize;
@@ -2181,6 +2185,36 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         _isDynamicIslandActive = false;
         _dynamicIslandWindow?.HideIsland();
+    }
+
+    /// <summary>
+    /// 灵动岛自行收起（自动隐藏）后的收尾。
+    /// 若仍有服务在翻译，保留激活状态以接收稍后到达的结果；
+    /// 否则复位，避免后续与服务无关的结果事件让灵动岛再次弹出。
+    /// </summary>
+    private void OnDynamicIslandHidden(object? sender, EventArgs e)
+    {
+        if (IsAnyTranslationInProgress())
+            return;
+
+        _isDynamicIslandActive = false;
+    }
+
+    private bool IsAnyTranslationInProgress()
+    {
+        foreach (var service in TranslateService.Services)
+        {
+            if (!service.IsEnabled) continue;
+
+            switch (service.Plugin)
+            {
+                case ITranslatePlugin tp when tp.TransResult.IsProcessing:
+                case IDictionaryPlugin dp when dp.DictionaryResult.IsProcessing:
+                    return true;
+            }
+        }
+
+        return false;
     }
 
     private void OnDynamicIslandDoubleClicked(object? sender, EventArgs e)
