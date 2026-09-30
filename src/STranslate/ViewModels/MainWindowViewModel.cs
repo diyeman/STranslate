@@ -253,12 +253,20 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
     public IdentifiedLanguageStateKind CurrentIdentifiedLanguageState => _identifiedLanguageState.Kind;
 
+    /// <summary>
+    /// 划词直接翻译是否需要强制主窗口常驻显示并置顶。
+    /// 灵动岛开启时翻译结果由顶部胶囊承载，不再需要抢占主窗口，
+    /// 因此该模式下只解除强制置顶，窗口显隐完全交还用户。
+    /// </summary>
+    internal bool RequiresMouseSelectionTopmost =>
+        Settings.IsMouseSelectionTranslationEnabled && !Settings.DynamicIslandEnabled;
+
     public bool IsTopmost
     {
         get => field;
         set
         {
-            if (Settings.IsMouseSelectionTranslationEnabled &&
+            if (RequiresMouseSelectionTopmost &&
                 !value &&
                 !_isApplyingManagedTopmost)
             {
@@ -1778,8 +1786,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
 
     private void ApplyMouseSelectionWindowMode()
     {
-        var shouldForceTopmost = Settings.IsMouseSelectionTranslationEnabled;
-        if (shouldForceTopmost)
+        // 灵动岛开启时不需要强制置顶：结果走顶部胶囊，主窗口保持用户当前的显隐状态
+        if (RequiresMouseSelectionTopmost)
         {
             Show();
             AcquireManagedTopmost(ref _mouseSelectionTranslationHasTopmostLease);
@@ -2063,7 +2071,8 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void Cancel(Window window)
     {
-        if (!Settings.IsMouseSelectionTranslationEnabled)
+        // 灵动岛模式下不锁定置顶，Esc 应能正常收起窗口
+        if (!RequiresMouseSelectionTopmost)
         {
             if (IsTopmost) IsTopmost = false;
             ExitInputTranslateMode();
@@ -2408,6 +2417,24 @@ public partial class MainWindowViewModel : ObservableObject, IDisposable
             e.PropertyName == nameof(Settings.HideInputWithLangSelectControl))
         {
             NotifyInputVisibilityProperties();
+        }
+
+        if (e.PropertyName == nameof(Settings.DynamicIslandEnabled))
+        {
+            // 灵动岛开关变化会改变「划词直接翻译是否仍需强制置顶」，需要即时重算，
+            // 否则用户必须重启应用才能在新模式下生效。
+            var islandDispatcher = Application.Current?.Dispatcher;
+            if (islandDispatcher == null)
+                return;
+
+            if (islandDispatcher.CheckAccess())
+                ApplyMouseSelectionWindowMode();
+            else
+                islandDispatcher.BeginInvoke(
+                    DispatcherPriority.Background,
+                    new Action(ApplyMouseSelectionWindowMode));
+
+            return;
         }
 
         if (e.PropertyName != nameof(Settings.MainWindowMaxHeightRatio) &&
