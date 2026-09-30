@@ -13,6 +13,10 @@ function Log([string]$msg, [string]$color = "Yellow") {
 $CleanVersion = $Version -replace '^v', ''
 Log "开始构建 STranslate 版本: $CleanVersion" "Green"
 
+# AssemblyVersion/AssemblyFileVersion 只接受纯数字(major[.minor[.build[.revision]]]),
+# 预发布标识(如 2.0.11-diyeman)只能写进 AssemblyInformationalVersion, 否则报 CS7034
+$NumericVersion = ($CleanVersion -split '-')[0]
+
 # 更新./src/SolutionAssemblyInfo.cs 中的版本号
 $asmInfo = "./src/SolutionAssemblyInfo.cs"
 
@@ -29,7 +33,8 @@ if (Test-Path $asmInfo) {
 
     foreach ($key in $patterns.Keys) {
         $pattern = $patterns[$key]
-        $replacement = "$key(`"$CleanVersion`")"
+        $value = if ($key -eq 'AssemblyInformationalVersion') { $CleanVersion } else { $NumericVersion }
+        $replacement = "$key(`"$value`")"
         $content = [regex]::Replace($content, $pattern, $replacement)
     }
 
