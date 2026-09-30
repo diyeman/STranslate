@@ -22,3 +22,6 @@ target/
 
 # superpowers docs
 docs/superpowers/
+
+# workbuddy agent workspace
+.workbuddy/
